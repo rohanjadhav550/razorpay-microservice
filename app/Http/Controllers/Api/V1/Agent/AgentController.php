@@ -160,7 +160,7 @@ class AgentController extends Controller
                 'migrations' => ['sql' => $migrations],
                 'status' => 'pending',
             ]);
-
+            
             return response()->json([
                 'success' => true,
                 'message' => 'Schema proposal generated.',

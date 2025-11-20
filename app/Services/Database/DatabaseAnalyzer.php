@@ -104,6 +104,32 @@ class DatabaseAnalyzer
         return $this->connection->statement($statement);
     }
 
+    public function executeMigration(string $sql): void
+    {
+        // Remove markdown code blocks if present
+        $sql = preg_replace('/```sql\s*/i', '', $sql);
+        $sql = preg_replace('/```\s*/', '', $sql);
+
+        // Split by semicolons but preserve them in the statements
+        // Handle multiple SQL statements
+        $statements = array_filter(
+            array_map('trim', preg_split('/;(?=\s*(?:--|CREATE|ALTER|DROP|INSERT|UPDATE|DELETE|TRIGGER|INDEX|$))/i', $sql)),
+            fn ($stmt) => !empty($stmt) && !preg_match('/^--/', trim($stmt))
+        );
+
+        foreach ($statements as $statement) {
+            $statement = trim($statement);
+
+            // Skip empty statements or comment-only lines
+            if (empty($statement) || preg_match('/^--.*$/m', $statement) && !preg_match('/\b(CREATE|ALTER|DROP|INSERT|UPDATE|DELETE)\b/i', $statement)) {
+                continue;
+            }
+
+            // Execute the statement
+            $this->connection->unprepared($statement);
+        }
+    }
+
     // MySQL implementations
     private function getMySQLTables(): array
     {

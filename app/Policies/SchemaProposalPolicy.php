@@ -21,4 +21,14 @@ class SchemaProposalPolicy
     {
         return $user->id === $proposal->user_id;
     }
+
+    public function approve(User $user, SchemaProposal $proposal): bool
+    {
+        return $user->id === $proposal->user_id;
+    }
+
+    public function apply(User $user, SchemaProposal $proposal): bool
+    {
+        return $user->id === $proposal->user_id;
+    }
 }

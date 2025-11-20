@@ -119,7 +119,8 @@ class AgentController extends Controller
     public function generateProposal(Request $request, AgentConversation $conversation)
     {
         // Increase timeout for AI API calls (2 minutes)
-        set_time_limit(120);
+        set_time_limit(300);
+        \Log::info('Main');
 
         $this->authorize('update', $conversation);
 
@@ -134,6 +135,7 @@ class AgentController extends Controller
         }
 
         try {
+            \Log::info('here 1');
             $connection = $conversation->databaseConnection;
             $analyzer = new DatabaseAnalyzer($connection);
             $currentSchema = $analyzer->getSchema();
@@ -143,17 +145,17 @@ class AgentController extends Controller
 
             // Analyze requirements from conversation
             $conversationText = collect($conversation->messages)
-                ->map(fn ($m) => "{$m['role']}: {$m['content']}")
+                ->map(fn($m) => "{$m['role']}: {$m['content']}")
                 ->implode("\n");
 
             $requirements = $aiService->analyzeRequirements($conversationText);
-
+            \Log::info('here 2');
             // Generate ER diagram for proposed changes
             $proposedDiagram = $aiService->generateERDiagram($requirements, $currentSchema);
-
+            \Log::info('here 3');
             // Generate migrations
             $migrations = $aiService->generateMigrations($requirements, $currentSchema);
-
+            \Log::info('here 4');
             // Create workflow if not exists
             $workflow = $conversation->workflow;
             if (! $workflow) {
@@ -162,12 +164,20 @@ class AgentController extends Controller
                     'database_connection_id' => $connection->id,
                     'name' => 'Workflow from conversation #' . $conversation->id,
                     'description' => $requirements,
+                    'service_type' => 'schema_design',
                     'status' => 'analyzing',
                 ]);
 
                 $conversation->update(['workflow_id' => $workflow->id]);
+            } else {
+                // Delete existing proposals for this workflow to reset
+                $workflow->schemaProposals()->delete();
+                $workflow->update([
+                    'description' => $requirements,
+                    'status' => 'analyzing',
+                ]);
             }
-
+            \Log::info('here 5');
             // Create schema proposal
             $proposal = SchemaProposal::create([
                 'user_id' => $user->id,
@@ -179,7 +189,7 @@ class AgentController extends Controller
                 'migrations' => $migrations,
                 'status' => 'pending',
             ]);
-
+            \Log::info('Proposal------>', [$proposal]);
             $workflow->update(['status' => 'proposed']);
 
             return back()->with([
@@ -234,8 +244,18 @@ class AgentController extends Controller
             $connection = $proposal->workflow->databaseConnection;
             $analyzer = new DatabaseAnalyzer($connection);
 
-            foreach ($proposal->migration_files as $migration) {
-                $analyzer->executeMigration($migration['sql']);
+            // Handle migrations as string (SQL) or array
+            $migrations = $proposal->migrations;
+            if (is_string($migrations)) {
+                // Execute as raw SQL
+                $analyzer->executeMigration($migrations);
+            } elseif (is_array($migrations)) {
+                foreach ($migrations as $migration) {
+                    $sql = is_array($migration) ? ($migration['sql'] ?? '') : $migration;
+                    if ($sql) {
+                        $analyzer->executeMigration($sql);
+                    }
+                }
             }
 
             $proposal->update([
@@ -249,11 +269,28 @@ class AgentController extends Controller
         } catch (\Exception $e) {
             $proposal->update([
                 'status' => 'failed',
-                'error_message' => $e->getMessage(),
             ]);
 
             return back()->withErrors(['migration' => 'Failed to apply migrations: ' . $e->getMessage()]);
         }
+    }
+
+    public function retryMigration(Request $request, SchemaProposal $proposal)
+    {
+        $this->authorize('apply', $proposal);
+
+        if ($proposal->status !== 'failed') {
+            return back()->withErrors(['proposal' => 'Only failed proposals can be retried.']);
+        }
+
+        // Reset status to approved so user can try again
+        $proposal->update([
+            'status' => 'approved',
+        ]);
+
+        $proposal->workflow->update(['status' => 'proposed']);
+
+        return back()->with('success', 'Proposal status reset. You can now try applying migrations again.');
     }
 
     public function storeConnection(Request $request)

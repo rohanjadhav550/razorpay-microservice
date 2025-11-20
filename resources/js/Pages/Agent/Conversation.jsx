@@ -88,6 +88,12 @@ export default function ConversationPage({ conversation, connections }) {
         }
     };
 
+    const handleRetryMigration = (proposalId) => {
+        if (confirm('Are you sure you want to retry applying these migrations?')) {
+            router.post(`/agent/proposals/${proposalId}/retry`);
+        }
+    };
+
     const latestProposal = conversation.workflow?.schema_proposals?.[0];
 
     return (
@@ -309,6 +315,22 @@ export default function ConversationPage({ conversation, connections }) {
                                                 >
                                                     Apply Migrations
                                                 </button>
+                                            )}
+                                            {latestProposal.status === 'failed' && (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleRetryMigration(latestProposal.id)}
+                                                        className="px-4 py-2 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700"
+                                                    >
+                                                        Retry Migration
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRejectProposal(latestProposal.id)}
+                                                        className="px-4 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </>
                                             )}
                                         </div>
                                     </div>

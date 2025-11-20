@@ -52,7 +52,7 @@ class AIService
         $messages = [
             [
                 'role' => 'user',
-                'content' => "Based on these requirements:\n\n{$requirements}\n\nAnd the current schema:\n\n".json_encode($currentSchema, JSON_PRETTY_PRINT)."\n\nGenerate a Mermaid ER diagram for the PROPOSED schema (including both existing and new tables/columns).",
+                'content' => "Based on these requirements:\n\n{$requirements}\n\nAnd the current schema:\n\n" . json_encode($currentSchema, JSON_PRETTY_PRINT) . "\n\nGenerate a Mermaid ER diagram for the PROPOSED schema (including both existing and new tables/columns).",
             ],
         ];
 
@@ -66,7 +66,7 @@ class AIService
         $messages = [
             [
                 'role' => 'user',
-                'content' => "Based on these requirements:\n\n{$requirements}\n\nAnd the current schema:\n\n".json_encode($currentSchema, JSON_PRETTY_PRINT)."\n\nGenerate SQL migrations to implement the required changes.",
+                'content' => "Based on these requirements:\n\n{$requirements}\n\nAnd the current schema:\n\n" . json_encode($currentSchema, JSON_PRETTY_PRINT) . "\n\nGenerate SQL migrations to implement the required changes.",
             ],
         ];
 
@@ -99,7 +99,7 @@ PROMPT;
         $prompt = "User requirement: {$userPrompt}\n\n";
 
         if ($existingSchema) {
-            $prompt .= "Existing database schema:\n".json_encode($existingSchema, JSON_PRETTY_PRINT)."\n\n";
+            $prompt .= "Existing database schema:\n" . json_encode($existingSchema, JSON_PRETTY_PRINT) . "\n\n";
             $prompt .= "Analyze how to extend this existing schema to support the user's requirements.\n";
         } else {
             $prompt .= "No existing schema provided. Design a complete schema from scratch.\n";

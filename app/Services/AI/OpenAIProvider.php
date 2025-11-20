@@ -46,7 +46,6 @@ class OpenAIProvider implements AIProviderInterface
         }
 
         $data = $response->json();
-
         return $data['choices'][0]['message']['content'] ?? '';
     }
 

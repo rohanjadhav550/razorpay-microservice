@@ -59,6 +59,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/agent/proposals/{proposal}/approve', [AgentController::class, 'approveProposal'])->name('agent.proposals.approve');
     Route::post('/agent/proposals/{proposal}/reject', [AgentController::class, 'rejectProposal'])->name('agent.proposals.reject');
     Route::post('/agent/proposals/{proposal}/apply', [AgentController::class, 'applyMigrations'])->name('agent.proposals.apply');
+    Route::post('/agent/proposals/{proposal}/retry', [AgentController::class, 'retryMigration'])->name('agent.proposals.retry');
 
     // Database Connections
     Route::post('/agent/connections', [AgentController::class, 'storeConnection'])->name('agent.connections.store');
