@@ -19,7 +19,7 @@ class SettingsController extends Controller
     public function updateServices(Request $request)
     {
         $validated = $request->validate([
-            'enabled_services' => ['required', 'array'],
+            'enabled_services' => ['present', 'array'],
             'enabled_services.*' => ['string', 'in:payment_links,orders,agent'],
         ]);
 

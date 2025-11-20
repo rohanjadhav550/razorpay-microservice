@@ -8,7 +8,7 @@ export default function Settings() {
 
     // Services form
     const servicesForm = useForm({
-        services: user.enabled_services || [],
+        enabled_services: user.enabled_services || [],
     });
 
     // Razorpay form
@@ -32,11 +32,11 @@ export default function Settings() {
     });
 
     const toggleService = (service) => {
-        const current = servicesForm.data.services;
+        const current = servicesForm.data.enabled_services;
         if (current.includes(service)) {
-            servicesForm.setData('services', current.filter(s => s !== service));
+            servicesForm.setData('enabled_services', current.filter(s => s !== service));
         } else {
-            servicesForm.setData('services', [...current, service]);
+            servicesForm.setData('enabled_services', [...current, service]);
         }
     };
 
@@ -63,8 +63,8 @@ export default function Settings() {
     };
 
     const availableServices = [
-        { id: 'payment_link', name: 'Payment Links', description: 'Create and manage payment links' },
-        { id: 'order', name: 'Orders', description: 'Create and manage orders' },
+        { id: 'payment_links', name: 'Payment Links', description: 'Create and manage payment links' },
+        { id: 'orders', name: 'Orders', description: 'Create and manage orders' },
         { id: 'agent', name: 'AI Agent', description: 'AI-powered workflow automation' },
     ];
 
@@ -83,7 +83,7 @@ export default function Settings() {
                             <label key={service.id} className="flex items-start gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
-                                    checked={servicesForm.data.services.includes(service.id)}
+                                    checked={servicesForm.data.enabled_services.includes(service.id)}
                                     onChange={() => toggleService(service.id)}
                                     className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                 />

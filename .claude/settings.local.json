@@ -3,7 +3,13 @@
     "allow": [
       "mcp__laravel-boost__application-info",
       "mcp__laravel-boost__database-schema",
-      "Bash(vendor/bin/pint:*)"
+      "Bash(vendor/bin/pint:*)",
+      "mcp__laravel-boost__get-absolute-url",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_fill_form",
+      "mcp__laravel-boost__last-error",
+      "mcp__laravel-boost__database-query"
     ],
     "deny": [],
     "ask": []
