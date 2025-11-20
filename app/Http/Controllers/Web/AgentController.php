@@ -1,0 +1,309 @@
+<?php
+
+namespace App\Http\Controllers\Web;
+
+use App\Http\Controllers\Controller;
+use App\Models\AgentConversation;
+use App\Models\AgentWorkflow;
+use App\Models\DatabaseConnection;
+use App\Models\SchemaProposal;
+use App\Services\AI\AIService;
+use App\Services\Database\DatabaseAnalyzer;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class AgentController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        $user = $request->user();
+
+        $conversations = AgentConversation::where('user_id', $user->id)
+            ->with(['workflow', 'databaseConnection'])
+            ->latest()
+            ->take(10)
+            ->get();
+
+        $workflows = AgentWorkflow::where('user_id', $user->id)
+            ->with('schemaProposals')
+            ->latest()
+            ->take(10)
+            ->get();
+
+        $connections = DatabaseConnection::where('user_id', $user->id)->get();
+
+        return Inertia::render('Agent/Index', [
+            'conversations' => $conversations,
+            'workflows' => $workflows,
+            'connections' => $connections,
+        ]);
+    }
+
+    public function createConversation(Request $request)
+    {
+        $validated = $request->validate([
+            'database_connection_id' => ['nullable', 'exists:database_connections,id'],
+        ]);
+
+        $user = $request->user();
+
+        if (! $user->hasAIConfigured()) {
+            return back()->withErrors(['ai' => 'Please configure your AI provider settings first.']);
+        }
+
+        $conversation = AgentConversation::create([
+            'user_id' => $user->id,
+            'database_connection_id' => $validated['database_connection_id'] ?? null,
+            'messages' => [],
+        ]);
+
+        return redirect()->route('agent.conversation', $conversation->id);
+    }
+
+    public function conversation(Request $request, AgentConversation $conversation): Response
+    {
+        $this->authorize('view', $conversation);
+
+        $connections = DatabaseConnection::where('user_id', $request->user()->id)->get();
+
+        return Inertia::render('Agent/Conversation', [
+            'conversation' => $conversation->load(['workflow', 'databaseConnection']),
+            'connections' => $connections,
+        ]);
+    }
+
+    public function chat(Request $request, AgentConversation $conversation)
+    {
+        $this->authorize('update', $conversation);
+
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:10000'],
+        ]);
+
+        $user = $request->user();
+
+        if (! $user->hasAIConfigured()) {
+            return back()->withErrors(['ai' => 'Please configure your AI provider settings first.']);
+        }
+
+        // Add user message
+        $messages = $conversation->messages ?? [];
+        $messages[] = [
+            'role' => 'user',
+            'content' => $validated['message'],
+            'timestamp' => now()->toISOString(),
+        ];
+
+        // Get AI response
+        try {
+            $aiService = new AIService($user);
+            $systemPrompt = $this->buildSystemPrompt($conversation);
+
+            $response = $aiService->chat($messages, $systemPrompt);
+
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => $response,
+                'timestamp' => now()->toISOString(),
+            ];
+
+            $conversation->update(['messages' => $messages]);
+
+            return back()->with('success', 'Message sent successfully.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['ai' => 'Failed to get AI response: ' . $e->getMessage()]);
+        }
+    }
+
+    public function generateProposal(Request $request, AgentConversation $conversation)
+    {
+        $this->authorize('update', $conversation);
+
+        $user = $request->user();
+
+        if (! $user->hasAIConfigured()) {
+            return back()->withErrors(['ai' => 'Please configure your AI provider settings first.']);
+        }
+
+        if (! $conversation->database_connection_id) {
+            return back()->withErrors(['database' => 'Please select a database connection first.']);
+        }
+
+        try {
+            $connection = $conversation->databaseConnection;
+            $analyzer = new DatabaseAnalyzer($connection);
+            $currentSchema = $analyzer->getSchema();
+            $erDiagram = $analyzer->generateMermaidERDiagram();
+
+            $aiService = new AIService($user);
+
+            // Analyze requirements from conversation
+            $conversationText = collect($conversation->messages)
+                ->map(fn ($m) => "{$m['role']}: {$m['content']}")
+                ->implode("\n");
+
+            $requirements = $aiService->analyzeRequirements($conversationText);
+
+            // Generate ER diagram for proposed changes
+            $proposedDiagram = $aiService->generateERDiagram($requirements, $currentSchema);
+
+            // Generate migrations
+            $migrations = $aiService->generateMigrations($requirements, $currentSchema);
+
+            // Create workflow if not exists
+            $workflow = $conversation->workflow;
+            if (! $workflow) {
+                $workflow = AgentWorkflow::create([
+                    'user_id' => $user->id,
+                    'database_connection_id' => $connection->id,
+                    'name' => 'Workflow from conversation #' . $conversation->id,
+                    'description' => $requirements,
+                    'status' => 'analyzing',
+                ]);
+
+                $conversation->update(['workflow_id' => $workflow->id]);
+            }
+
+            // Create schema proposal
+            $proposal = SchemaProposal::create([
+                'workflow_id' => $workflow->id,
+                'current_schema' => $currentSchema,
+                'proposed_schema' => $migrations,
+                'er_diagram_current' => $erDiagram,
+                'er_diagram_proposed' => $proposedDiagram,
+                'migration_files' => $migrations,
+                'status' => 'pending',
+            ]);
+
+            $workflow->update(['status' => 'proposed']);
+
+            return back()->with([
+                'success' => 'Schema proposal generated successfully.',
+                'proposal_id' => $proposal->id,
+            ]);
+        } catch (\Exception $e) {
+            return back()->withErrors(['ai' => 'Failed to generate proposal: ' . $e->getMessage()]);
+        }
+    }
+
+    public function approveProposal(Request $request, SchemaProposal $proposal)
+    {
+        $this->authorize('approve', $proposal);
+
+        $proposal->update([
+            'status' => 'approved',
+            'approved_at' => now(),
+            'approved_by' => $request->user()->id,
+        ]);
+
+        return back()->with('success', 'Proposal approved successfully.');
+    }
+
+    public function rejectProposal(Request $request, SchemaProposal $proposal)
+    {
+        $this->authorize('approve', $proposal);
+
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $proposal->update([
+            'status' => 'rejected',
+            'rejection_reason' => $validated['reason'] ?? null,
+        ]);
+
+        $proposal->workflow->update(['status' => 'rejected']);
+
+        return back()->with('success', 'Proposal rejected.');
+    }
+
+    public function applyMigrations(Request $request, SchemaProposal $proposal)
+    {
+        $this->authorize('apply', $proposal);
+
+        if ($proposal->status !== 'approved') {
+            return back()->withErrors(['proposal' => 'Proposal must be approved before applying migrations.']);
+        }
+
+        try {
+            $connection = $proposal->workflow->databaseConnection;
+            $analyzer = new DatabaseAnalyzer($connection);
+
+            foreach ($proposal->migration_files as $migration) {
+                $analyzer->executeMigration($migration['sql']);
+            }
+
+            $proposal->update([
+                'status' => 'applied',
+                'applied_at' => now(),
+            ]);
+
+            $proposal->workflow->update(['status' => 'completed']);
+
+            return back()->with('success', 'Migrations applied successfully.');
+        } catch (\Exception $e) {
+            $proposal->update([
+                'status' => 'failed',
+                'error_message' => $e->getMessage(),
+            ]);
+
+            return back()->withErrors(['migration' => 'Failed to apply migrations: ' . $e->getMessage()]);
+        }
+    }
+
+    public function storeConnection(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'driver' => ['required', 'string', 'in:mysql,pgsql,sqlite,sqlsrv'],
+            'host' => ['nullable', 'string', 'max:255'],
+            'port' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'database' => ['required', 'string', 'max:255'],
+            'username' => ['nullable', 'string', 'max:255'],
+            'password' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $validated['user_id'] = $request->user()->id;
+
+        $connection = DatabaseConnection::create($validated);
+
+        return back()->with([
+            'success' => 'Database connection created successfully.',
+            'connection_id' => $connection->id,
+        ]);
+    }
+
+    public function testConnection(Request $request, DatabaseConnection $connection)
+    {
+        $this->authorize('view', $connection);
+
+        try {
+            $analyzer = new DatabaseAnalyzer($connection);
+            $analyzer->testConnection();
+
+            return back()->with('success', 'Connection successful.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['connection' => 'Connection failed: ' . $e->getMessage()]);
+        }
+    }
+
+    protected function buildSystemPrompt(AgentConversation $conversation): string
+    {
+        $prompt = "You are an AI database architect assistant. Help users design and modify database schemas. ";
+        $prompt .= "When the user describes their requirements, analyze them and suggest appropriate database changes. ";
+        $prompt .= "Ask clarifying questions if needed. Be concise and technical.";
+
+        if ($conversation->database_connection_id) {
+            try {
+                $analyzer = new DatabaseAnalyzer($conversation->databaseConnection);
+                $schema = $analyzer->getSchema();
+                $prompt .= "\n\nCurrent database schema:\n" . json_encode($schema, JSON_PRETTY_PRINT);
+            } catch (\Exception $e) {
+                $prompt .= "\n\nNote: Unable to fetch current schema: " . $e->getMessage();
+            }
+        }
+
+        return $prompt;
+    }
+}
