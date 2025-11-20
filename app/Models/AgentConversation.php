@@ -13,6 +13,7 @@ class AgentConversation extends Model
     protected $fillable = [
         'user_id',
         'workflow_id',
+        'database_connection_id',
         'title',
         'messages',
         'status',
@@ -33,6 +34,11 @@ class AgentConversation extends Model
     public function workflow(): BelongsTo
     {
         return $this->belongsTo(AgentWorkflow::class, 'workflow_id');
+    }
+
+    public function databaseConnection(): BelongsTo
+    {
+        return $this->belongsTo(DatabaseConnection::class);
     }
 
     public function addMessage(string $role, string $content): void

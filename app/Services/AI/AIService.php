@@ -45,28 +45,28 @@ class AIService
         return $this->chat($messages, $systemPrompt);
     }
 
-    public function generateERDiagram(array $proposedSchema): string
+    public function generateERDiagram(string $requirements, array $currentSchema): string
     {
-        $systemPrompt = 'You are a database schema expert. Generate Mermaid ER diagram syntax for the given schema. Only output the Mermaid code, no explanations.';
+        $systemPrompt = 'You are a database schema expert. Generate Mermaid ER diagram syntax for the proposed schema based on the requirements. Only output the Mermaid code starting with "erDiagram", no explanations.';
 
         $messages = [
             [
                 'role' => 'user',
-                'content' => "Generate a Mermaid ER diagram for this schema:\n\n".json_encode($proposedSchema, JSON_PRETTY_PRINT),
+                'content' => "Based on these requirements:\n\n{$requirements}\n\nAnd the current schema:\n\n".json_encode($currentSchema, JSON_PRETTY_PRINT)."\n\nGenerate a Mermaid ER diagram for the PROPOSED schema (including both existing and new tables/columns).",
             ],
         ];
 
         return $this->chat($messages, $systemPrompt);
     }
 
-    public function generateMigrations(array $proposedChanges, string $databaseDriver): string
+    public function generateMigrations(string $requirements, array $currentSchema): string
     {
-        $systemPrompt = "You are a database migration expert. Generate SQL migration statements for {$databaseDriver}. Output only the SQL code with comments explaining each change.";
+        $systemPrompt = "You are a database migration expert. Generate SQL migration statements. Output only the SQL code with comments explaining each change. Format each migration as a separate SQL block.";
 
         $messages = [
             [
                 'role' => 'user',
-                'content' => "Generate migrations for these changes:\n\n".json_encode($proposedChanges, JSON_PRETTY_PRINT),
+                'content' => "Based on these requirements:\n\n{$requirements}\n\nAnd the current schema:\n\n".json_encode($currentSchema, JSON_PRETTY_PRINT)."\n\nGenerate SQL migrations to implement the required changes.",
             ],
         ];
 

@@ -26,7 +26,7 @@ class AnthropicProvider implements AIProviderInterface
             $payload['system'] = $systemPrompt;
         }
 
-        $response = Http::withHeaders([
+        $response = Http::timeout(120)->withHeaders([
             'x-api-key' => $this->apiKey,
             'anthropic-version' => '2023-06-01',
             'content-type' => 'application/json',

@@ -9,7 +9,12 @@
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_fill_form",
       "mcp__laravel-boost__last-error",
-      "mcp__laravel-boost__database-query"
+      "mcp__laravel-boost__database-query",
+      "mcp__playwright__browser_snapshot",
+      "Bash(php artisan make:migration:*)",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_wait_for",
+      "mcp__laravel-boost__read-log-entries"
     ],
     "deny": [],
     "ask": []

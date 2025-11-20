@@ -8,6 +8,15 @@ use App\Http\Controllers\Web\PaymentLinkController;
 use App\Http\Controllers\Web\SettingsController;
 use Illuminate\Support\Facades\Route;
 
+// Temporary route to clear PHP opcache - remove after use
+Route::get('/clear-cache', function () {
+    if (function_exists('opcache_reset')) {
+        opcache_reset();
+        return 'OPcache cleared!';
+    }
+    return 'OPcache not available';
+});
+
 // Guest routes
 Route::middleware('guest')->group(function () {
     Route::get('/', fn () => redirect('/login'));

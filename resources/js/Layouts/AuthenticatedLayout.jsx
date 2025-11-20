@@ -24,7 +24,7 @@ function classNames(...classes) {
     return classes.filter(Boolean).join(' ');
 }
 
-export default function AuthenticatedLayout({ children }) {
+export default function AuthenticatedLayout({ children, fullWidth = false }) {
     const { auth } = usePage().props;
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -144,8 +144,8 @@ export default function AuthenticatedLayout({ children }) {
                     </div>
                 </div>
 
-                <main className="py-10">
-                    <div className="px-4 sm:px-6 lg:px-8">{children}</div>
+                <main className={fullWidth ? '' : 'py-10'}>
+                    <div className={fullWidth ? '' : 'px-4 sm:px-6 lg:px-8'}>{children}</div>
                 </main>
             </div>
         </div>

@@ -68,7 +68,7 @@ class AgentController extends Controller
         $connections = DatabaseConnection::where('user_id', $request->user()->id)->get();
 
         return Inertia::render('Agent/Conversation', [
-            'conversation' => $conversation->load(['workflow', 'databaseConnection']),
+            'conversation' => $conversation->load(['workflow.schemaProposals', 'databaseConnection']),
             'connections' => $connections,
         ]);
     }
@@ -118,6 +118,9 @@ class AgentController extends Controller
 
     public function generateProposal(Request $request, AgentConversation $conversation)
     {
+        // Increase timeout for AI API calls (2 minutes)
+        set_time_limit(120);
+
         $this->authorize('update', $conversation);
 
         $user = $request->user();
@@ -134,7 +137,7 @@ class AgentController extends Controller
             $connection = $conversation->databaseConnection;
             $analyzer = new DatabaseAnalyzer($connection);
             $currentSchema = $analyzer->getSchema();
-            $erDiagram = $analyzer->generateMermaidERDiagram();
+            $erDiagram = $analyzer->generateMermaidERDiagram($currentSchema);
 
             $aiService = new AIService($user);
 
@@ -167,12 +170,13 @@ class AgentController extends Controller
 
             // Create schema proposal
             $proposal = SchemaProposal::create([
+                'user_id' => $user->id,
                 'workflow_id' => $workflow->id,
-                'current_schema' => $currentSchema,
-                'proposed_schema' => $migrations,
-                'er_diagram_current' => $erDiagram,
-                'er_diagram_proposed' => $proposedDiagram,
-                'migration_files' => $migrations,
+                'database_connection_id' => $connection->id,
+                'description' => $requirements,
+                'er_diagram' => $proposedDiagram,
+                'proposed_changes' => json_encode($currentSchema),
+                'migrations' => $migrations,
                 'status' => 'pending',
             ]);
 
