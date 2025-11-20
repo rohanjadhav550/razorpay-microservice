@@ -106,27 +106,82 @@ class DatabaseAnalyzer
 
     public function executeMigration(string $sql): void
     {
+        \Log::info('DatabaseAnalyzer::executeMigration called', ['sql_length' => strlen($sql)]);
+
         // Remove markdown code blocks if present
         $sql = preg_replace('/```sql\s*/i', '', $sql);
         $sql = preg_replace('/```\s*/', '', $sql);
 
-        // Split by semicolons but preserve them in the statements
-        // Handle multiple SQL statements
-        $statements = array_filter(
-            array_map('trim', preg_split('/;(?=\s*(?:--|CREATE|ALTER|DROP|INSERT|UPDATE|DELETE|TRIGGER|INDEX|$))/i', $sql)),
-            fn ($stmt) => !empty($stmt) && !preg_match('/^--/', trim($stmt))
-        );
+        \Log::info('After removing markdown', ['sql_length' => strlen($sql)]);
 
-        foreach ($statements as $statement) {
-            $statement = trim($statement);
+        // Split SQL into individual statements by semicolon
+        // But be careful with triggers that have BEGIN...END blocks
+        $statements = [];
+        $currentStatement = '';
+        $inBlock = 0;
 
-            // Skip empty statements or comment-only lines
-            if (empty($statement) || preg_match('/^--.*$/m', $statement) && !preg_match('/\b(CREATE|ALTER|DROP|INSERT|UPDATE|DELETE)\b/i', $statement)) {
+        $lines = explode("\n", $sql);
+        foreach ($lines as $line) {
+            $trimmedLine = trim($line);
+
+            // Skip empty lines and comment-only lines
+            if (empty($trimmedLine) || strpos($trimmedLine, '--') === 0) {
                 continue;
             }
 
-            // Execute the statement
-            $this->connection->unprepared($statement);
+            $currentStatement .= $line . "\n";
+
+            // Track BEGIN/END blocks for triggers
+            if (preg_match('/\bBEGIN\b/i', $line)) {
+                $inBlock++;
+            }
+            if (preg_match('/\bEND\b/i', $line)) {
+                $inBlock = max(0, $inBlock - 1);
+            }
+
+            // Check if statement is complete (ends with semicolon and not in a block)
+            if (preg_match('/;\s*$/', $trimmedLine) && $inBlock === 0) {
+                $stmt = trim($currentStatement);
+                if (!empty($stmt)) {
+                    $statements[] = $stmt;
+                }
+                $currentStatement = '';
+            }
+        }
+
+        // Add any remaining statement
+        if (!empty(trim($currentStatement))) {
+            $statements[] = trim($currentStatement);
+        }
+
+        \Log::info('Parsed statements', ['count' => count($statements)]);
+
+        foreach ($statements as $index => $statement) {
+            $statement = trim($statement);
+
+            // Skip if only comments
+            if (empty($statement) || preg_match('/^--.*$/s', $statement)) {
+                continue;
+            }
+
+            // Remove trailing semicolon for unprepared() if needed
+            $statement = rtrim($statement, ';');
+
+            \Log::info("Executing statement {$index}", [
+                'statement' => substr($statement, 0, 300),
+                'driver' => $this->driver,
+            ]);
+
+            try {
+                $this->connection->unprepared($statement);
+                \Log::info("Statement {$index} executed successfully");
+            } catch (\Exception $e) {
+                \Log::error("Statement {$index} failed", [
+                    'error' => $e->getMessage(),
+                    'statement' => $statement,
+                ]);
+                throw $e;
+            }
         }
     }
 

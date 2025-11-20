@@ -244,15 +244,26 @@ class AgentController extends Controller
             $connection = $proposal->workflow->databaseConnection;
             $analyzer = new DatabaseAnalyzer($connection);
 
+            \Log::info('Applying migrations', [
+                'proposal_id' => $proposal->id,
+                'connection_id' => $connection->id,
+                'driver' => $connection->driver,
+            ]);
+
             // Handle migrations as string (SQL) or array
             $migrations = $proposal->migrations;
+            \Log::info('Migrations data', ['type' => gettype($migrations), 'content' => $migrations]);
+
             if (is_string($migrations)) {
                 // Execute as raw SQL
+                \Log::info('Executing migrations as string');
                 $analyzer->executeMigration($migrations);
             } elseif (is_array($migrations)) {
-                foreach ($migrations as $migration) {
+                \Log::info('Executing migrations as array', ['count' => count($migrations)]);
+                foreach ($migrations as $index => $migration) {
                     $sql = is_array($migration) ? ($migration['sql'] ?? '') : $migration;
                     if ($sql) {
+                        \Log::info("Executing migration {$index}", ['sql' => substr($sql, 0, 200)]);
                         $analyzer->executeMigration($sql);
                     }
                 }
@@ -265,8 +276,16 @@ class AgentController extends Controller
 
             $proposal->workflow->update(['status' => 'completed']);
 
+            \Log::info('Migrations applied successfully', ['proposal_id' => $proposal->id]);
+
             return back()->with('success', 'Migrations applied successfully.');
         } catch (\Exception $e) {
+            \Log::error('Migration failed', [
+                'proposal_id' => $proposal->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             $proposal->update([
                 'status' => 'failed',
             ]);
